@@ -1,0 +1,6 @@
+dotenv
+fastapi
+sqlalchemy
+apscheduler
+requests
+psycopg2
