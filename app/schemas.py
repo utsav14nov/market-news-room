@@ -17,6 +17,7 @@ class NewsCreate(NewsBase):
     title: str
     url: str
     api_source: str
+    full_content: str
 
 class NewsResponse(NewsBase):
     id: int

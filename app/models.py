@@ -15,3 +15,4 @@ class News(Base):
     source = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     api_source = Column(String(100), nullable=True)
+    full_content = Column(Text, nullable=True)

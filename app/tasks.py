@@ -4,6 +4,7 @@ from . import schemas, crud, database
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.background import BackgroundScheduler
 from .config import settings
+from .scrapeNews import get_article_text, clean_text_paragraphs
 
 # Example external API (replace with your own)
 NEWS_API_URL = settings.GNEWS_SEARCH_API_URL
@@ -42,12 +43,13 @@ def fetch_and_store_news():
                 title=article.get("title"),
                 description=article.get("description"),
                 url=article.get("url"),
-                content=article.get("description"),
+                content=clean_text_paragraphs(article.get("content")),
                 source=article.get("source", {}).get("name", "Unknown"),
                 image=article.get("image"),
                 published_at=article.get("publishedAt"),
                 gnews_id=article.get("id"),
-                api_source="gnews"
+                api_source="gnews",
+                full_content=get_article_text(article.get("url"))
             )
             # avoid duplicate entries
             existing = crud.get_news_by_gnews_id(db, gnews_id=news_item.gnews_id)
