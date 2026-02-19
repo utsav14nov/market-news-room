@@ -11,5 +11,8 @@ def create_news(db: Session, news: schemas.NewsCreate):
 def get_news(db: Session, skip: int = 0, limit: int = 20):
     return db.query(models.News).order_by(models.News.published_at.desc()).offset(skip).limit(limit).all()
 
+def get_news_by_id(db: Session, news_id: int):
+    return db.query(models.News).filter(models.News.id == news_id).first()
+
 def get_news_by_gnews_id(db: Session, gnews_id: str):
     return db.query(models.News).filter(models.News.gnews_id == gnews_id).first()
