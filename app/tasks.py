@@ -16,10 +16,12 @@ def fetch_and_store_news():
 
     gemini = GoogleGemini()
     to_time = datetime.now(timezone.utc)
-    from_time = to_time - timedelta(hours=5)
+    from_time = to_time - timedelta(hours=24)
 
     to_str = to_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
     from_str = from_time.strftime("%Y-%m-%dT%H:%M:%S.000Z")
+
+    print(f"Fetching for {from_time} to {to_time}")
 
     try:
         params = {
@@ -30,7 +32,7 @@ def fetch_and_store_news():
             "to": to_str,
             "q": "indian stock market OR sensex OR nifty OR NSE OR BSE OR equities OR shares OR trading OR IPO OR results OR earnings",
             "sortby": "publishedAt",
-            "pageSize": 5
+            "pageSize": 10
         }
 
 
