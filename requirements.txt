@@ -5,5 +5,7 @@ uvicorn[standard]
 sqlalchemy
 apscheduler
 requests
-psycopg2
+psycopg2-binary
 google-cloud-storage
+trafilatura
+playwright
