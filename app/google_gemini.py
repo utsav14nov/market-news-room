@@ -250,98 +250,121 @@ class GoogleGemini:
         """
         print(f"Generating image: {file_id}.png")
         prompt = f"""
-        You will be given two sections extracted from an Indian stock market news article:
-          KEY INSIGHTS   — rich, fact-based bullet points with numbers and context
-          ABBREVIATIONS  — professional financial terms and their full forms (may be "(none)")
+        You will be given KEY INSIGHTS from an Indian stock market news article, and optionally
+        a list of ABBREVIATIONS. These are your ONLY source of truth — do not use outside knowledge.
 
-        These are your ONLY source of truth. Do not use outside knowledge.
+        Your task:
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        STRICT FACT ACCURACY (CRITICAL)
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        - Use ONLY numbers, names, and data that appear verbatim in the input below
-        - Do NOT round, estimate, or derive any values not explicitly given
-        - Do NOT add context from your own knowledge
-        - If a value is unclear → omit it, never guess
+        - Read each KEY INSIGHT and decide the best VISUAL way to represent it
+        - Identify the most important, factual, and data-backed elements per insight
+        - Do NOT follow a fixed structure or predefined sections
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        IMAGE LAYOUT — FREE-FLOWING, EDITORIAL
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        STRICT FACT ACCURACY RULE (CRITICAL)
 
-        MAIN CONTENT — one visual card per KEY INSIGHT
-        - Each card is a self-contained visual story
-        - Each card has THREE lines of text — ALL THREE must appear, never skip any:
-            Line 1 (HEADLINE): bold, largest font — key number, entity, or action
-            Line 2 (CONTEXT):  medium font — cause, source, or supporting fact
-            Line 3 (IMPACT):   smaller font — consequence or additional data point
-          Reduce card height rather than dropping any line. All 3 must be visible.
-        - One supporting visual per card: icon, arrow, bar chart, or diagram
-        - Cards flow naturally down the image — organic arrangement, varying sizes,
-          asymmetric columns, cards offset or overlapping slightly — make it feel alive
-        - Separate cards ONLY with whitespace and subtle color shifts
-        - ABSOLUTELY NO thick horizontal bars, heavy ruled lines, or rigid grid dividers
-          between cards. Use ≤1px lines or soft shadows at most.
+        - Use ONLY numbers, percentages, dates, names, and data explicitly written in the input
+        - Do NOT calculate derived percentages
+        - Do NOT estimate ranges
+        - Do NOT round numbers unless already rounded in the input
+        - Do NOT add context from memory or prior knowledge
+        - Do NOT infer causes unless directly mentioned
+        - If a number is not clearly provided → do NOT display any number
+        - If exact wording is unclear → omit it instead of guessing
+        - Accuracy is more important than completeness
 
-        KEY TERMS GLOSSARY (skip entirely if ABBREVIATIONS says "(none)")
-        ── COPY-PASTE RULE (ABSOLUTE) ────────────────────────────────────
-        - Read the ABBREVIATIONS section from the input below
-        - Render EACH entry EXACTLY as written — do NOT add, remove, or reword
-        - Do NOT invent abbreviations from your own knowledge
-        ──────────────────────────────────────────────────────────────────
-        - Float naturally at the bottom of the image, seamlessly integrated with design
-        - DO NOT surround with a heavy bordered box or thick strip — keep it light
-        - Small compact badges: [BOLD TERM] = [Full Form], two badges per row
-        - Each badge auto-sizes to fit its full text — never clip or truncate
-        - Minimum font: 14px TERM, 13px Full Form
+        TEXT CLARITY RULES (NON-NEGOTIABLE — prevents blur and incomplete text)
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        TEXT CLARITY RULES (NON-NEGOTIABLE)
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        - Every text element MUST sit inside a solid or semi-transparent filled panel
-        - Never place text directly on a complex/gradient/illustrated background
-        - Minimum internal padding of every text container: 10px all sides
-        - Minimum gap between any two text containers: 14px
-        - Text MUST NEVER overflow, clip, or run off its container
-          → shorten a label rather than letting it overflow
-        - Never place two labels so close they visually merge
-        - High contrast between text colour and its background panel (pass WCAG AA)
-        - Minimum font sizes: key numbers 30px+, headlines 20px+, detail lines 15px+
-        - NO curved, rotated, skewed, or outlined (hollow) text — always solid filled
+        - Every text label must be 100% COMPLETE — never cut off mid-word, mid-number, or mid-sentence
+        - All text must be fully inside the image boundary — nothing touching or crossing any edge
+        - Render all text at FULL OPACITY — no faded, semi-transparent, or ghost text
+        - Every text element must sit on a solid or semi-transparent backing panel — never on a raw
+          illustrated or gradient background
+        - Minimum font sizes: key numbers 28px+, labels 18px+, supporting text 14px+
+        - Always high contrast: white text on dark panel, dark text on light panel
+        - Do NOT stylize, curve, rotate, or skew any text
+        - Do NOT use outline-only (hollow) text — always solid fill
+        - Never overlap two text elements — maintain clear separation between all labels
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        VISUAL STYLE
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        - Professional finance context with engaging, playful visuals
-        - Express market mood with bull 🐂 / bear 🐻 characters or expressive icons
-        - Humor comes from visual reactions, not written text
-        - Avoid sensational, misleading, or clickbait imagery
+        NANO BANANA TEXT RULES
 
-        ICON VARIETY: pick a DIFFERENT style per article
-        - Mix from: minimalist flat, 3D emoji-style, silhouette symbols, sticker, line-art, geometric
-        - Alternate visual treatment across insight blocks within the same image
+        - Do NOT write sentences or paragraphs inside the image
+        - Use ONLY short text labels
+        - Text must be bold, large, complete, and clearly readable
+        - Prefer numbers, symbols, arrows, icons, and expressions over words
+        - Do NOT place dense text anywhere in the image
 
-        COLOR: ONE randomly chosen theme from
-          [dark green · royal blue · sunset orange · deep purple · charcoal black · crimson red · teal · mustard yellow]
-        - Background and accents align with the theme
-        - KEY TERMS strip uses a darker/muted variant of the same theme
+        KEY RULES
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        CANVAS USAGE — CRITICAL
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        - Fill the ENTIRE canvas — large empty areas are forbidden
-        - Cards must be compact and information-dense; shrink card size and reduce padding
-          until all insight cards together cover at least 90% of the canvas
-        - If you have fewer insights, make each card taller / richer to fill the space
-        - Viewers expect a packed, rich infographic — not a sparse poster with lots of air
-        - Tight but readable: minimum breathing room between cards, no wasted whitespace
+        - Let the available data decide the layout
+        - If numbers, percentages, or trends are present → represent them visually (charts, arrows, comparisons)
+        - If explanations or reasons are present → show them using icons, symbols, or visual metaphors
+        - If no clear data exists → use simple visual summaries (no invented charts)
+        - Never assume, exaggerate, or fabricate missing information
 
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        CONTENT HANDLING
+
+        - Convert insights into visual-friendly cues — do NOT copy paragraphs
+        - Preserve accuracy of all figures, names, and direction of movement
+        - Avoid jargon wherever possible
+
         DESIGN GOAL
-        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-        - Instagram-style portrait infographic, mobile-first
-        - Viewer understands the full story in 5–8 seconds
-        - Each insight block tells a complete mini-story (headline + context + impact)
-        - KEY TERMS badges help any reader decode jargon instantly
+
+        - A highly engaging, scroll-stopping Instagram-style image
+        - Viewer should understand the core message in 5–6 seconds
+        - Mobile-first and Instagram-friendly
+        - Each insight should be visually independent
+        - Fill the entire canvas — large empty areas are not acceptable
+
+        STYLE
+
+        - Professional finance context with playful, engaging visuals
+        - Light humor through visuals and emotions (not jokes or text)
+        - Express market mood using characters, icons, or reactions
+        - Avoid sensational, misleading, or clickbait visuals
+
+        HUMOR & ENGAGEMENT GUIDELINES
+
+        - Use expressive bull 🐂 / bear 🐻 characters where relevant
+        - Use exaggerated but accurate emotions (excited, shocked, nervous, relaxed)
+        - Humor should come from visual reactions, not from written jokes
+        - Keep it addictive like an Instagram reel, but trustworthy
+
+        ICON & VISUAL VARIABILITY RULE (VERY IMPORTANT)
+
+        - Do NOT reuse the same icon style for every news article
+        - For each new article, choose a different combination of:
+            Minimalist flat icons | 3D emoji-style icons | Silhouette finance symbols
+            Sticker-style illustrations | Line-art icons | Abstract geometric indicators
+            Character-based expressions (only if mood-heavy news)
+        - If one block uses arrows → next block should prefer icons or diagrams
+        - Maintain stylistic consistency within ONE image, but vary across different articles
+        - Avoid template-like repetition
+
+        COLOR RULES
+
+        - Randomly choose ONE primary color theme from:
+            [dark green, royal blue, sunset orange, deep purple, charcoal black, crimson red, teal, mustard yellow]
+        - Background and accent colors must align with the chosen theme
+        - Do NOT reuse the same color theme intentionally
+
+        OUTPUT
+
+        - A single visual infographic-style image
+        - Composed of multiple visual blocks or elements
+        - Each element represents one KEY INSIGHT
+        - Use charts, diagrams, icons, and minimal readable text only
+
+        KEY TERMS GLOSSARY
+
+        If the ABBREVIATIONS section below contains entries (not "(none)"):
+        - Add a small "KEY TERMS" section at the very bottom of the image
+        - COPY-PASTE RULE (ABSOLUTE): render each entry EXACTLY as written — do NOT add,
+          remove, reword, or invent any abbreviation from your own knowledge
+        - Format: compact pill badges — [BOLD TERM] = Full Form — two per row
+        - Each badge must be wide enough to contain its full text — never clip or truncate
+        - Minimum font: 14px TERM, 13px Full Form — fully opaque, high contrast
+        - Keep it light and visually integrated — no heavy borders or thick boxes around it
+
+        If ABBREVIATIONS says "(none)", skip the KEY TERMS section entirely.
 
         # ====================
         KEY NEWS INSIGHTS & ABBREVIATIONS
