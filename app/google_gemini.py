@@ -1,9 +1,16 @@
+from __future__ import annotations
+
+from typing import Optional
 from .config import settings
 from google import genai
 import json
 import os
 from PIL import Image
 from google.cloud import storage
+
+# Max KEY INSIGHTS per image — if an article has more, extra images are generated
+INSIGHTS_PER_IMAGE = 8
+
 
 class GoogleGemini:
     def __init__(self):
@@ -45,15 +52,8 @@ class GoogleGemini:
         bucket = storage_client.bucket(settings.GEMINI_BUCKET_NAME)
         blob = bucket.blob(destination_blob_name)
 
-        # Optional: set a generation-match precondition to avoid potential race conditions
-        # and data corruptions. The request to upload is aborted if the object's
-        # generation number does not match your precondition. For a destination
-        # object that does not yet exist, set the if_generation_match precondition to 0.
-        # If the destination object already exists in your bucket, set instead a
-        # generation-match precondition using its generation number.
-        generation_match_precondition = 0
-
-        blob.upload_from_filename(source_file_name, if_generation_match=generation_match_precondition)
+        # No generation precondition — always overwrite if the file already exists
+        blob.upload_from_filename(source_file_name)
 
         print(
             f"File {source_file_name} uploaded to {destination_blob_name}."
@@ -86,117 +86,266 @@ class GoogleGemini:
                 "score": 0.0,
                 "confidence": 0.0
             }
-        
+
         return self.parse_response(response.text)
-    
-    def generate_nano_banana_image(self, news_text: str, gnews_id: str):
-        print(f"Generating image for {gnews_id}")
+
+    def summarize_to_bullets(self, news_text: str, gnews_id: str) -> str:
+        """
+        Summarise full article into two structured sections for image generation:
+          KEY INSIGHTS  — rich, descriptive bullets with facts, context, and impact
+          ABBREVIATIONS — professional/technical terms only, with full forms
+        """
+        print(f"Summarising to bullets for {gnews_id}")
         prompt = f"""
-        You will be given a FULL news article related to the Indian stock market.
+        You are a financial news analyst specialising in Indian equity markets.
 
-        Your task:
+        Read the news article below and produce a structured summary in EXACTLY TWO SECTIONS.
 
-        - Read and understand the entire content internally
-        - Identify the most important, factual, and data-backed insights
-        - Decide the best VISUAL way to explain each insight
-        - Do NOT follow a fixed structure or predefined sections
+        ═══════════════════════════════════════
+        SECTION 1 — KEY INSIGHTS
+        ═══════════════════════════════════════
+        Rules:
+        - 6 to 10 bullets, each prefixed with "•"
+        - Each bullet must cover: main fact + magnitude/number + cause or context + impact or implication
+          (include only the parts that are explicitly stated in the article — do NOT infer)
+        - Max ~30 words per bullet — be thorough and descriptive, not vague
+        - Include specific numbers, % changes, index levels, company names, dates, and rupee/dollar amounts
+        - Use ONLY facts explicitly stated in the article — never infer, calculate, or guess
+        - Write full names first then abbreviation in parentheses on first use: e.g. "Foreign Institutional Investors (FIIs)"
 
-        STRICT FACT ACCURACY RULE (CRITICAL)
+        Good example (descriptive, fact-rich):
+        • Sensex tumbled 961 pts (1.17%) to close at 81,287 on Feb 27, dragged by Iran-Israel tensions that spiked Brent crude 3%, threatening India's oil import bill.
+        • India meets 85–90% of its crude demand via imports; a $10/barrel crude rise adds ₹10,000–15,000 crore to the annual import bill.
 
-        - Use ONLY numbers, percentages, dates, names, and data that are explicitly written in the provided news content
-        - Do NOT calculate derived percentages
-        - Do NOT estimate ranges
-        - Do NOT round numbers unless already rounded in the article
-        - Do NOT add context from memory or prior knowledge
-        - Do NOT infer causes unless directly mentioned
-        - If a number is not clearly provided → do NOT display any number
-        - If exact wording is unclear → omit it instead of guessing
-        - If information is missing, leave it out.
-        - Accuracy is more important than completeness.
-        
-        VERY IMPORTANT (NANO BANANA TEXT RULES):
+        ═══════════════════════════════════════
+        SECTION 2 — ABBREVIATIONS USED
+        ═══════════════════════════════════════
+        Rules:
+        - List ONLY highly technical / niche financial abbreviations used in Section 1
+        - Only include terms that even a regular stock market follower would need explained
+        - INCLUDE: SEBI, DRHP, OFS, QIP, F&O, STT, FII, DII, FPI, WTI, bpd, bbl,
+          EBITDA, EPS, NAV, EMA, RSI, MACD, P/E, PCR, VIX (as fear index context only if unclear)
+        - DO NOT include ANY of the following — they are common knowledge for Indian market readers:
+          NSE, BSE, IPO, FY, GDP, RBI, Sensex, Nifty, USD, INR, %, pts, Cr, lakh, bn,
+          Q1/Q2/Q3/Q4, IT, AI, MNC, CEO, MD, CFO, or any plain English word
+        - Format: TERM = Full Form  (max 5 words — no dash explanation)
+        - Prefix each entry with "•"
+        - If no qualifying abbreviations appear in Section 1, write exactly: ABBREVIATIONS:\n(none)
 
-        - Do NOT write sentences or paragraphs inside the image
-        - Use ONLY short text labels
-        - Text must be bold, large, complete, and clearly readable
-        - Prefer numbers, symbols, arrows, icons, and expressions over words
-        - Do NOT stylize or curve text
-        - Do NOT place dense text anywhere in the image
+        ═══════════════════════════════════════
+        OUTPUT FORMAT — STRICT
+        ═══════════════════════════════════════
+        Return ONLY this exact structure — no titles, no intro, no trailing commentary:
 
-        KEY RULES:
+        KEY INSIGHTS:
+        • [insight 1]
+        • [insight 2]
+        ...
 
-        - Let the available data decide the layout
-        - If numbers, percentages, or trends are present → represent them visually (charts, arrows, comparisons)
-        - If explanations or reasons are present → show them using icons, symbols, or visual metaphors
-        - If no clear data exists → use simple visual summaries (no invented charts)
-        - Never assume, exaggerate, or fabricate missing information
+        ABBREVIATIONS:
+        • [TERM] = [Full Form]
+        ...
 
-        CONTENT HANDLING:
+        NEWS ARTICLE:
+        {news_text}
+        """
+        try:
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=[prompt]
+            )
+            return response.text.strip()
+        except Exception as e:
+            print(f"Error summarising for {gnews_id}: {e}")
+            return news_text  # fallback to raw content
 
-        - Extract insights internally; do NOT copy paragraphs or headlines
-        - Convert long explanations into visual-friendly cues
-        - Preserve accuracy of all figures, names, and direction of movement
-        - Avoid jargon wherever possible
+    # ------------------------------------------------------------------
+    # Helpers for multi-image generation
+    # ------------------------------------------------------------------
 
-        DESIGN GOAL:
+    def _parse_bullet_sections(self, bullet_points: str) -> tuple[list[str], list[str]]:
+        """
+        Parse the two-section bullet_points string into separate lists.
+        Returns (insights, abbreviations) where each entry is a '•' prefixed string.
+        """
+        insights: list[str] = []
+        abbreviations: list[str] = []
+        current_section = None
 
-        - A highly engaging, scroll-stopping Instagram-style image
-        - Viewer should understand the core message in 5–6 seconds
-        - Mobile-first and Instagram-friendly
-        - Each insight should be visually independent
+        for line in bullet_points.strip().splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("KEY INSIGHTS:"):
+                current_section = "insights"
+            elif stripped.startswith("ABBREVIATIONS:"):
+                current_section = "abbreviations"
+            elif stripped.startswith("•"):
+                clean = stripped.lstrip("•").strip()
+                if clean in ("(none)", ""):
+                    continue
+                if current_section == "insights":
+                    insights.append(stripped)
+                elif current_section == "abbreviations":
+                    abbreviations.append(stripped)
 
-        STYLE:
+        return insights, abbreviations
 
-        - Professional finance context with playful, engaging visuals
-        - Light humor through visuals and emotions (not jokes or text)
-        - Express market mood using characters, icons, or reactions
-        - Avoid sensational, misleading, or clickbait visuals
+    def generate_images_for_article(self, bullet_points: str, gnews_id: str) -> list[str]:
+        """
+        Generate one or more images for an article.
 
-        HUMOR & ENGAGEMENT GUIDELINES:
+        - If KEY INSIGHTS count <= INSIGHTS_PER_IMAGE  → single image (gnews_id.png)
+        - If KEY INSIGHTS count  > INSIGHTS_PER_IMAGE  → split into chunks;
+          first image is gnews_id.png, subsequent are gnews_id_2.png, gnews_id_3.png …
+        - All abbreviations are included in every image chunk.
+        Returns a list of GCS URLs (empty if all generations fail).
+        """
+        insights, abbreviations = self._parse_bullet_sections(bullet_points)
 
-        - Use expressive bull 🐂 / bear 🐻 characters where relevant
-        - Use exaggerated but accurate emotions (excited, shocked, nervous, relaxed)
-        - Humor should come from visual reactions, not from written jokes
-        - Keep it addictive like an Instagram reel, but trustworthy
+        if not insights:
+            # Fallback: pass raw bullet_points as-is to a single image
+            print(f"  No parsed insights for {gnews_id} — falling back to raw prompt")
+            url = self._generate_single_image(bullet_points, gnews_id)
+            return [url] if url else []
 
-        ICON & VISUAL VARIABILITY RULE (VERY IMPORTANT)
+        # Split insights into chunks
+        chunks = [
+            insights[i: i + INSIGHTS_PER_IMAGE]
+            for i in range(0, len(insights), INSIGHTS_PER_IMAGE)
+        ]
 
-        - To avoid repetitive visuals:
+        abbrev_block = (
+            "ABBREVIATIONS:\n" + "\n".join(abbreviations)
+            if abbreviations
+            else "ABBREVIATIONS:\n(none)"
+        )
 
-        - Do NOT reuse the same icon style for every news article
-        - For each new article:
-            - Choose a different combination of:
-            - Minimalist flat icons
-            - 3D emoji-style icons
-            - Silhouette finance symbols
-            - Sticker-style illustrations
-            - Line-art icons
-            - Abstract geometric indicators
-            - Character-based expressions (only if mood-heavy news)
-        - If previous block uses arrows → next block should prefer icons or diagrams
-        - If previous insight uses character emotion → next one should use clean data visuals
-        - Maintain stylistic consistency within ONE image, but vary approach across different news articles
-        - Avoid template-like repetition.
+        total = len(chunks)
+        print(
+            f"  {len(insights)} insights → {total} image(s) for {gnews_id}"
+        )
 
-        ### Color rules:
+        urls: list[str] = []
+        for idx, chunk in enumerate(chunks):
+            chunk_content = (
+                f"KEY INSIGHTS:\n"
+                + "\n".join(chunk)
+                + "\n\n"
+                + abbrev_block
+            )
+            # Naming: first image keeps gnews_id.png (backward compat)
+            file_id = gnews_id if idx == 0 else f"{gnews_id}_{idx + 1}"
+            url = self._generate_single_image(chunk_content, file_id)
+            if url:
+                urls.append(url)
 
-        - Randomly choose ONE primary color theme from this list for every generation:
-            
-            [dark green, royal blue, sunset orange, deep purple, charcoal black, crimson red, teal, mustard yellow]
-            
-        - Background and accent colors must align with the chosen theme.
-        - Do NOT reuse the same color theme intentionally.
+        return urls
 
-        OUTPUT:
+    def _generate_single_image(self, bullet_points: str, file_id: str) -> Optional[str]:
+        """
+        Core image generation call.
+        `file_id` is used as the filename (file_id.png) — may differ from gnews_id
+        when generating part 2, part 3 etc.
+        """
+        print(f"Generating image: {file_id}.png")
+        prompt = f"""
+        You will be given two sections extracted from an Indian stock market news article:
+          KEY INSIGHTS   — rich, fact-based bullet points with numbers and context
+          ABBREVIATIONS  — professional financial terms and their full forms (may be "(none)")
 
-        - A single visual infographic-style image
-        - Composed of multiple visual blocks or elements
-        - Each element represents one important insight from the article
-        - Use charts, diagrams, icons, and minimal readable text only
+        These are your ONLY source of truth. Do not use outside knowledge.
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        STRICT FACT ACCURACY (CRITICAL)
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        - Use ONLY numbers, names, and data that appear verbatim in the input below
+        - Do NOT round, estimate, or derive any values not explicitly given
+        - Do NOT add context from your own knowledge
+        - If a value is unclear → omit it, never guess
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        IMAGE LAYOUT — FREE-FLOWING, EDITORIAL
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+        MAIN CONTENT — one visual card per KEY INSIGHT
+        - Each card is a self-contained visual story
+        - Each card has THREE lines of text — ALL THREE must appear, never skip any:
+            Line 1 (HEADLINE): bold, largest font — key number, entity, or action
+            Line 2 (CONTEXT):  medium font — cause, source, or supporting fact
+            Line 3 (IMPACT):   smaller font — consequence or additional data point
+          Reduce card height rather than dropping any line. All 3 must be visible.
+        - One supporting visual per card: icon, arrow, bar chart, or diagram
+        - Cards flow naturally down the image — organic arrangement, varying sizes,
+          asymmetric columns, cards offset or overlapping slightly — make it feel alive
+        - Separate cards ONLY with whitespace and subtle color shifts
+        - ABSOLUTELY NO thick horizontal bars, heavy ruled lines, or rigid grid dividers
+          between cards. Use ≤1px lines or soft shadows at most.
+
+        KEY TERMS GLOSSARY (skip entirely if ABBREVIATIONS says "(none)")
+        ── COPY-PASTE RULE (ABSOLUTE) ────────────────────────────────────
+        - Read the ABBREVIATIONS section from the input below
+        - Render EACH entry EXACTLY as written — do NOT add, remove, or reword
+        - Do NOT invent abbreviations from your own knowledge
+        ──────────────────────────────────────────────────────────────────
+        - Float naturally at the bottom of the image, seamlessly integrated with design
+        - DO NOT surround with a heavy bordered box or thick strip — keep it light
+        - Small compact badges: [BOLD TERM] = [Full Form], two badges per row
+        - Each badge auto-sizes to fit its full text — never clip or truncate
+        - Minimum font: 14px TERM, 13px Full Form
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        TEXT CLARITY RULES (NON-NEGOTIABLE)
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        - Every text element MUST sit inside a solid or semi-transparent filled panel
+        - Never place text directly on a complex/gradient/illustrated background
+        - Minimum internal padding of every text container: 10px all sides
+        - Minimum gap between any two text containers: 14px
+        - Text MUST NEVER overflow, clip, or run off its container
+          → shorten a label rather than letting it overflow
+        - Never place two labels so close they visually merge
+        - High contrast between text colour and its background panel (pass WCAG AA)
+        - Minimum font sizes: key numbers 30px+, headlines 20px+, detail lines 15px+
+        - NO curved, rotated, skewed, or outlined (hollow) text — always solid filled
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        VISUAL STYLE
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        - Professional finance context with engaging, playful visuals
+        - Express market mood with bull 🐂 / bear 🐻 characters or expressive icons
+        - Humor comes from visual reactions, not written text
+        - Avoid sensational, misleading, or clickbait imagery
+
+        ICON VARIETY: pick a DIFFERENT style per article
+        - Mix from: minimalist flat, 3D emoji-style, silhouette symbols, sticker, line-art, geometric
+        - Alternate visual treatment across insight blocks within the same image
+
+        COLOR: ONE randomly chosen theme from
+          [dark green · royal blue · sunset orange · deep purple · charcoal black · crimson red · teal · mustard yellow]
+        - Background and accents align with the theme
+        - KEY TERMS strip uses a darker/muted variant of the same theme
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        CANVAS USAGE — CRITICAL
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        - Fill the ENTIRE canvas — large empty areas are forbidden
+        - Cards must be compact and information-dense; shrink card size and reduce padding
+          until all insight cards together cover at least 90% of the canvas
+        - If you have fewer insights, make each card taller / richer to fill the space
+        - Viewers expect a packed, rich infographic — not a sparse poster with lots of air
+        - Tight but readable: minimum breathing room between cards, no wasted whitespace
+
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        DESIGN GOAL
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        - Instagram-style portrait infographic, mobile-first
+        - Viewer understands the full story in 5–8 seconds
+        - Each insight block tells a complete mini-story (headline + context + impact)
+        - KEY TERMS badges help any reader decode jargon instantly
 
         # ====================
-        FULL NEWS CONTENT
-        {news_text}
+        KEY NEWS INSIGHTS & ABBREVIATIONS
+        {bullet_points}
         """
 
         try:
@@ -204,11 +353,10 @@ class GoogleGemini:
                 model="gemini-2.5-flash-image",
                 contents=[prompt]
             )
-            # Save to project_root/news_images/ so it works regardless of cwd
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             img_dir = os.path.join(project_root, "news_images")
             os.makedirs(img_dir, exist_ok=True)
-            filepath = os.path.join(img_dir, f"{gnews_id}.png")
+            filepath = os.path.join(img_dir, f"{file_id}.png")
 
             for part in response.parts:
                 if part.text is not None:
@@ -216,17 +364,22 @@ class GoogleGemini:
                 elif part.inline_data is not None:
                     image = part.as_image()
                     image.save(filepath)
-                    self.upload_blob(filepath, f"{gnews_id}.png")
+                    self.upload_blob(filepath, f"{file_id}.png")
                     break
         except Exception as e:
-            print(f"Error from Gemini for {gnews_id}: {e}")
+            print(f"Error generating image {file_id}: {e}")
             return None
 
-        return f"https://storage.googleapis.com/{settings.GEMINI_BUCKET_NAME}/{gnews_id}.png"
+        return f"https://storage.googleapis.com/{settings.GEMINI_BUCKET_NAME}/{file_id}.png"
+
+    # Keep old name as a thin wrapper so nothing else breaks
+    def generate_nano_banana_image(self, bullet_points: str, gnews_id: str) -> Optional[str]:
+        return self._generate_single_image(bullet_points, gnews_id)
+
 
 if __name__ == "__main__":
     gemini = GoogleGemini()
     sentiment = gemini.analyze_sentiment("The stock market is performing well today.", "123")
     print(f"Sentiment: {sentiment}")
-    image = gemini.generate_nano_banana_image("The stock market is performing well today.", "123")
-    print(f"Image: {image}")
+    urls = gemini.generate_images_for_article("The stock market is performing well today.", "123")
+    print(f"Images: {urls}")

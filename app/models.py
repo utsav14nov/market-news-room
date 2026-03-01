@@ -20,3 +20,5 @@ class News(Base):
     sentiment_score = Column(Float, nullable=True)
     sentiment_confidence = Column(Float, nullable=True)
     generated_image = Column(String(500), nullable=True)
+    generated_images = Column(Text, nullable=True)  # JSON array of image URLs
+    bullet_points = Column(Text, nullable=True)

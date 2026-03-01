@@ -23,6 +23,8 @@ class NewsCreate(NewsBase):
     sentiment_score: Optional[float] = None
     sentiment_confidence: Optional[float] = None
     generated_image: Optional[str] = None
+    generated_images: Optional[str] = None  # JSON-encoded list of image URLs
+    bullet_points: Optional[str] = None
 
 class NewsResponse(NewsBase):
     id: int
@@ -37,6 +39,8 @@ class NewsResponse(NewsBase):
     sentiment_score: Optional[float] = None
     sentiment_confidence: Optional[float] = None
     generated_image: Optional[str] = None
+    generated_images: Optional[str] = None  # JSON-encoded list of image URLs
+    bullet_points: Optional[str] = None
     created_at: datetime
 
     class Config:
